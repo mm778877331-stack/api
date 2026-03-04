@@ -18,7 +18,7 @@ module.exports = async (req, res) => {
   }
 
   // الرابط الجديد بصيغة جوجل الرسمية
-  const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+  const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`;
 
   try {
     const response = await fetch(targetUrl, {
