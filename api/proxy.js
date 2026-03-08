@@ -5,6 +5,12 @@ module.exports = async (req, res) => {
   res.setHeader( 'Access-Control-Allow-Origin' ,  '*' );
   res.setHeader( 'Access-Control-Allow-Methods' ,  'GET, POST, OPTIONS' );
   res.setHeader( 'Access-Control-Allow-Headers' ,  'Content-Type' );
+  
+  // الإضافات الجديدة لحل مشكلة تعليق الكروم
+  res.setHeader( 'Content-Type' ,  'text/event-stream; charset=utf-8' );
+  res.setHeader( 'Cache-Control' ,  'no-cache );
+  res.setHeader( 'Connection' ,  'keep-alive' );
+  res.setHeader( 'X-Content-Type-Options' ,  'nosniff' ); // هذا اللي يمنع المتصفح من تحليل البيانات بشكل خاطئ
 
   if (req.method ===  'OPTIONS' ) {
     return res.status(200).end();
