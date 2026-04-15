@@ -1,5 +1,5 @@
 const crypto = require( 'crypto' );
-const fetch = (...args) => import( node-fetch ).then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import( 'node-fetch' ).then(({default: fetch}) => fetch(...args));
 
 // 🛑 إعدادات التشفير (نفسها في فلاتر)
 const ENCRYPTION_KEY = Buffer.from("VX_SUPER_SECRET_KEY_32_CHARS_MAX"); // 32 حرف بالضبط
