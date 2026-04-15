@@ -1,53 +1,62 @@
-const fetch = (...args) => import( 'node-fetch' ).then(({default: fetch}) => fetch(...args));
+const crypto = require( 'crypto' );
+const fetch = (...args) => import( node-fetch ).then(({default: fetch}) => fetch(...args));
+
+// 🛑 إعدادات التشفير (نفسها في فلاتر)
+const ENCRYPTION_KEY = Buffer.from("VX_SUPER_SECRET_KEY_32_CHARS_MAX"); // 32 حرف بالضبط
+const IV_LENGTH = 16; 
+
+function encrypt(text) {
+    let iv = crypto.randomBytes(IV_LENGTH);
+    let cipher = crypto.createCipheriv( 'aes-256-cbc' , ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(text,  'utf8' ,  'hex' );
+    encrypted += cipher.final( 'hex' );
+    return iv.toString( 'hex' ) +  ':'  + encrypted;
+}
 
 module.exports = async (req, res) => {
-  // 1. إعدادات الـ CORS والـ Streaming
-  res.setHeader( 'Access-Control-Allow-Origin' ,  '*' );
-  res.setHeader( 'Access-Control-Allow-Methods' ,  'POST, OPTIONS' );
-  res.setHeader( 'Access-Control-Allow-Headers' ,  'Content-Type' );
-  res.setHeader( 'Content-Type' ,  'text/event-stream; charset=utf-8' );
-  res.setHeader( 'Cache-Control' ,  'no-cache' );
-  res.setHeader( 'Connection' ,  'keep-alive' );
+    res.setHeader( 'Access-Control-Allow-Origin' ,  '*' );
+    res.setHeader( 'Access-Control-Allow-Methods' ,  'POST, OPTIONS' );
+    res.setHeader( 'Access-Control-Allow-Headers' ,  'Content-Type' );
 
-  if (req.method ===  'OPTIONS' ) return res.status(200).end();
+    if (req.method ===  'OPTIONS' ) return res.status(200).end();
 
-  // 🛑 التطوير الأول: مصفوفة المفاتيح (أضف مفاتيحك هنا في فيرسل)
-  const keys = [
-    process.env.GEMINI_KEY_1, 
-    process.env.GEMINI_KEY_2,
-    process.env.GEMINI_KEY_3
-  ].filter(k => k); // تصفية المفاتيح الموجودة فقط
+    // 🛑 جلب المفاتيح الثلاثة من إعدادات البيئة
+    const keys = [
+        process.env.GEMINI_KEY_1,
+        process.env.GEMINI_KEY_2,
+        process.env.GEMINI_KEY_3
+    ].filter(k => k); // تصفية الموجود فقط
 
-  // اختيار مفتاح عشوائي لتقليل الضغط على المفتاح الواحد
-  const selectedKey = keys[Math.floor(Math.random() * keys.length)];
+    // اختيار مفتاح عشوائي لضمان السيادة وتوزيع الحمل
+    const selectedKey = keys[Math.floor(Math.random() * keys.length)];
 
-  if (!selectedKey) {
-    return res.status(500).json({ error: "لا توجد مفاتيح API متوفرة في السيرفر" });
-  }
-
-  // 🛑 التطوير الثاني: توجيه الطلب لـ Gemini Flash (الأسرع والأنسب لليمن)
-  const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?key=${selectedKey}`;
-
-  try {
-    const response = await fetch(targetUrl, {
-      method:  'POST' ,
-      headers: {  'Content-Type' :  'application/json'  },
-      body: JSON.stringify(req.body)
-    });
-
-    // إذا جوجل رفضت الطلب بسبب الحظر أو استهلاك المفتاح
-    if (!response.ok) {
-      const errorData = await response.json();
-      return res.status(response.status).json({ 
-        error: "فشل الاتصال ", 
-        details: errorData 
-      });
+    if (!selectedKey) {
+        return res.status(500).json({ error: "لا توجد مفاتيح مضبوطة في فيرسل!" });
     }
 
-    // 🛑 التطوير الثالث: تمرير البث بأمان
-    response.body.pipe(res);
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${selectedKey}`,
+            {
+                method:  'POST' ,
+                headers: {  'Content-Type' :  'application/json'  },
+                body: JSON.stringify(req.body)
+            }
+        );
 
-  } catch (error) {
-    res.status(500).json({ error: "Internal Server Error", details: error.message });
-  }
+        const data = await response.json();
+        
+        if (data.candidates && data.candidates[0].content.parts[0].text) {
+            let originalText = data.candidates[0].content.parts[0].text;
+            
+            // 🛑 تشفير الرد بالكامل
+            let encryptedPayload = encrypt(originalText);
+            
+            res.status(200).json({ vXPayload: encryptedPayload });
+        } else {
+          res.status(500).json({ error: "رد غير متوقع من جوجل", details: data });
+        }
+    } catch (error) {
+        res.status(500).json({ error: "عائق تقني في السيرفر", details: error.message });
+    }
 };
