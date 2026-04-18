@@ -73,12 +73,14 @@ module.exports = async (req, res) => {
             
             // 🔒 التشفير البنكي للرد
             const encryptedData = encrypt(aiResponse);
-            res.status(200).json({ vXPayload: encryptedData });
+            return res.status(200).json({ vXPayload: encryptedData });
         } else {
             res.status(500).json({ error: "فشل في استعادة البيانات" });
         }
 
     } catch (error) {
-        res.status(500).json({ error: "عائق في البوابة 500", details: error.message });
+          // لو جوجل رفضت، شفر رسالة الخطأ وأرسلها عشان نشوفها في التطبيق
+            const errorMsg = encrypt("جوجل رفضت الرد: " + (data.error ? data.error.message : "رد فارغ"));
+            return res.status(200).json({ vXPayload: errorMsg });
     }
 };
