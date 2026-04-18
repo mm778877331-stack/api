@@ -36,17 +36,12 @@ module.exports = async (req, res) => {
     try {
         // ✨ الإضافة السحرية: زرع محرك البحث داخل جسم الطلب
         const requestBody = {
-            ...req.body, 
+            contents: req.body.contents, 
             tools: [
                 {
-                    googleSearchRetrieval: {
-                        dynamicRetrievalConfig: {
-                            mode: "dynamic",
-                            dynamicThreshold: 0.3,
-                        },
-                    },
-                },
-            ],
+                    google_search: {}
+                }
+            ]
         };
 
         const response = await fetch(
