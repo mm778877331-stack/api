@@ -69,7 +69,11 @@ module.exports = async (req, res) => {
                 })
             });
 
-            const data = await response.json();
+            const data = await response.json();\
+
+            if(data.error){
+                console.error(`Key ${index + 1} Error:`, data.error.message);
+            }
 
             // إذا فشل المفتاح (429 أو 400) جرب التالي
             if (response.status !== 200 || data.error) {
