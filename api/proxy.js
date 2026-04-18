@@ -63,9 +63,9 @@ module.exports = async (req, res) => {
             
             res.status(200).json({ vXPayload: encryptedPayload });
         } else {
-          res.status(500).json({ error: "رد غير متوقع من جوجل", details: data });
+          res.status(400).json({ error: "رد غير متوقع من جوجل", details: data });
         }
     } catch (error) {
-        res.status(500).json({ error: "عائق تقني في السيرفر", details: error.message });
+        res.status(500).json({ error: "عائق تقني في السيرفر", message: error.message });
     }
 };
