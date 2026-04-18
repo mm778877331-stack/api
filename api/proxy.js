@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const fetch = (...args) => import("node-fetch").then(({default: fetch}) => fetch(...args));
 
-// 🛑 مفتاح التشفير (يجب أن يطابق فلاتر 100%)
+// 🛑 إعدادات التشفير (يجب أن تطابق الفلاتر تماماً)
 const ENCRYPTION_KEY = Buffer.from("VX_SUPER_SECRET_KEY_32_CHARS_MAX"); 
 const IV_LENGTH = 16; 
 
@@ -13,15 +13,18 @@ function encrypt(text) {
     return iv.toString("hex") + ":" + encrypted;
 }
 
-// ✨ دالة فك تشفير الطلب القادم من فلاتر (للمستقبل)
 function decrypt(text) {
-    let textParts = text.split(":");
-    let iv = Buffer.from(textParts.shift(), "hex");
-    let encryptedText = Buffer.from(textParts.join(":"), "hex");
-    let decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
-    let decrypted = decipher.update(encryptedText, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
+    try {
+        let textParts = text.split(":");
+        let iv = Buffer.from(textParts.shift(), "hex");
+        let encryptedText = Buffer.from(textParts.join(":"), "hex");
+        let decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+        let decrypted = decipher.update(encryptedText, "hex", "utf8");
+        decrypted += decipher.final("utf8");
+        return decrypted;
+    } catch (e) {
+        return null;
+    }
 }
 
 module.exports = async (req, res) => {
@@ -31,56 +34,59 @@ module.exports = async (req, res) => {
 
     if (req.method === "OPTIONS") return res.status(200).end();
 
-    const keys = [process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3].filter(k => k);
-    const selectedKey = keys[Math.floor(Math.random() * keys.length)];
+    // 🔑 جلب المفاتيح من إعدادات Vercel
+    const keys = [
+        process.env.GEMINI_KEY_1,
+        process.env.GEMINI_KEY_2,
+        process.env.GEMINI_KEY_3
+    ].filter(k => k);
 
     try {
-        // 🔒 استخراج المحتوى (سواء كان مشفراً أو عادياً)
-        let promptText = req.body.prompt;
-        if (req.body.isEncrypted) {
-            promptText = decrypt(req.body.prompt);
+        // 🔒 فك تشفير الطلب القادم من فلاتر
+        const encryptedRequest = req.body.vXRequest;
+        const decryptedPrompt = decrypt(encryptedRequest);
+
+        if (!decryptedPrompt) {
+            return res.status(200).json({ vXPayload: encrypt("⚠️ عائق في تأمين قناة الاتصال.") });
         }
 
-        // 🚀 الهيكل الأكثر صرامة في تاريخ جوجل (Grounding Protocol)
-        const finalPayload = {
-            contents: [{ role: "user", parts: [{ text: promptText }] }],
-            tools: [{ google_search: {} }], // الأداة الصافية
-            generationConfig: {
-                temperature: 0.4, // خفضنا الحرارة لزيادة الدقة في البحث
-                topP: 1,
-                maxOutputTokens: 1000
+        // 🚀 وظيفة المحاولة المتكررة (Failover)
+        async function tryWithKey(index) {
+            if (index >= keys.length) {
+                throw new Error("ALL_KEYS_FAILED");
             }
-        };
 
-        const googleResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${selectedKey}`,
-            {
+            const currentKey = keys[index];
+            // استخدمت لك الموديل flash-latest كما طلبت مع رابط الـ v1beta
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`;
+
+            const response = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(finalPayload)
+                body: JSON.stringify({
+                    contents: [{ role: "user", parts: [{ text: decryptedPrompt }] }],
+                    tools: [{ googleSearch: {} }] // تفعيل البحث
+                })
+            });
+
+            const data = await response.json();
+
+            // إذا فشل المفتاح (429 أو 400) جرب التالي
+            if (response.status !== 200 || data.error) {
+                console.warn(Key ${index + 1} failed, trying next...);
+                return await tryWithKey(index + 1);
             }
-        );
 
-        const data = await googleResponse.json();
-
-        // 🛑 فحص الأخطاء قبل التشفير
-        if (data.error) {
-            return res.status(400).json({ error: "خطأ فني من المصدر", code: data.error.code });
+            return data;
         }
 
-        if (data.candidates && data.candidates[0].content) {
-            let aiResponse = data.candidates[0].content.parts[0].text;
-            
-            // 🔒 التشفير البنكي للرد
-            const encryptedData = encrypt(aiResponse);
-            return res.status(200).json({ vXPayload: encryptedData });
-        } else {
-            res.status(500).json({ error: "فشل في استعادة البيانات" });
-        }
+        const result = await tryWithKey(0);
+        const aiResponse = result.candidates[0].content.parts[0].text;
+
+        // 🔒 تشفير الرد النهائي
+        res.status(200).json({ vXPayload: encrypt(aiResponse) });
 
     } catch (error) {
-          // لو جوجل رفضت، شفر رسالة الخطأ وأرسلها عشان نشوفها في التطبيق
-            const errorMsg = encrypt("جوجل رفضت الرد: " + (data.error ? data.error.message : "رد فارغ"));
-            return res.status(200).json({ vXPayload: errorMsg });
+        res.status(200).json({ vXPayload: encrypt("نظام Vision X يواجه ضغطاً، حاول مجدداً بعد ثوانٍ.") });
     }
 };
