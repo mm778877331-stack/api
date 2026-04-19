@@ -43,7 +43,7 @@ module.exports = async (req, res) => {
         let decryptedPrompt = decrypt(rawPrompt);
 
         // طلب مباشر لجوجل بدون لف ولا دوران
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${hardcodedKey}`;
         
         const response = await fetch(url, {
             method: "POST",
