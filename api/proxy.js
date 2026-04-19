@@ -33,7 +33,7 @@ module.exports = async (req, res) => {
     if (req.method === "OPTIONS") return res.status(200).end();
 
     // 🚀 الحركة الانتحارية: وضع المفتاح مباشرة داخل الكود
-    const hardcodedKey = "AIzaSyASFpa_Vki96Lxbbau20fzsnTMplRsFg6Y"; 
+    const hardcodedKey = "AIzaSyCT8ikG7Yv_o_Ji4fSZniI9PYnU1RyMgx4"; 
 
     try {
         let rawPrompt = req.body.vXRequest || req.body.prompt;
