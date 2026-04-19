@@ -34,9 +34,7 @@ module.exports = async (req, res) => {
     if (req.method === "OPTIONS") return res.status(200).end();
 
     const keys = [
-        process.env.GEMINI_KEY_1,
-        process.env.GEMINI_KEY_2,
-        process.env.GEMINI_KEY_3
+        "AIzaSyASFpa_Vki96Lxbbau20fzsnTMplRsFg6Y"
     ].filter(k => k);
 
     try {
