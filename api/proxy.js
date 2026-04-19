@@ -8,8 +8,9 @@ const IV_LENGTH = 16;
 function encrypt(text) {
     let iv = crypto.randomBytes(IV_LENGTH);
     let cipher = crypto.createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
-    let encrypted = cipher.update(text, "utf8", "hex");
-    encrypted += cipher.final("hex");
+    // التعديل: جعل المخرجات base64 بدلاً من hex
+    let encrypted = cipher.update(text, "utf8", "base64");
+    encrypted += cipher.final("base64");
     return iv.toString("hex") + ":" + encrypted;
 }
 
@@ -17,10 +18,12 @@ function decrypt(text) {
     try {
         if (!text || !text.includes(":")) return text;
         let textParts = text.split(":");
-        let iv = Buffer.from(textParts.shift(), "hex");
-        let encryptedText = Buffer.from(textParts.join(":"), "hex");
+        let iv = Buffer.from(textParts.shift(), "hex"); // الـ IV يبقى Hex كما هو
+        let encryptedText = textParts.join(":"); // النص المشفر هنا سيعامل كـ Base64
+        
         let decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
-        let decrypted = decipher.update(encryptedText, "hex", "utf8");
+        // التعديل: إخبار المحرك أن المدخل base64
+        let decrypted = decipher.update(encryptedText, "base64", "utf8");
         decrypted += decipher.final("utf8");
         return decrypted;
     } catch (e) { return text; }
