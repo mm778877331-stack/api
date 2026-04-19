@@ -5,10 +5,12 @@ const fetch = (...args) => import("node-fetch").then(({default: fetch}) => fetch
 const ENCRYPTION_KEY = Buffer.from("VX_SUPER_SECRET_KEY_32_CHARS_MAX"); 
 const IV_LENGTH = 16; 
 
+// عداد المفاتيح (خارج الـ handler ليبقى مستمراً)
+let keyIndex = 0;
+
 function encrypt(text) {
     let iv = crypto.randomBytes(IV_LENGTH);
     let cipher = crypto.createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
-    // التعديل: جعل المخرجات base64 بدلاً من hex
     let encrypted = cipher.update(text, "utf8", "base64");
     encrypted += cipher.final("base64");
     return iv.toString("hex") + ":" + encrypted;
@@ -18,11 +20,10 @@ function decrypt(text) {
     try {
         if (!text || !text.includes(":")) return text;
         let textParts = text.split(":");
-        let iv = Buffer.from(textParts.shift(), "hex"); // الـ IV يبقى Hex كما هو
-        let encryptedText = textParts.join(":"); // النص المشفر هنا سيعامل كـ Base64
+        let iv = Buffer.from(textParts.shift(), "hex"); 
+        let encryptedText = textParts.join(":"); 
         
         let decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
-        // التعديل: إخبار المحرك أن المدخل base64
         let decrypted = decipher.update(encryptedText, "base64", "utf8");
         decrypted += decipher.final("utf8");
         return decrypted;
@@ -35,15 +36,23 @@ module.exports = async (req, res) => {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") return res.status(200).end();
 
-    // 🚀 الحركة الانتحارية: وضع المفتاح مباشرة داخل الكود
-    const hardcodedKey = process.env.GEMINI_KEY_1; 
+    // 🚀 مصفوفة المفاتيح الذكية من Vercel
+    const keys = [
+        process.env.GEMINI_KEY_1,
+        process.env.GEMINI_KEY_2,
+        process.env.GEMINI_KEY_3
+    ].filter(k => k);
 
     try {
+        // تبديل المفتاح مع كل طلب
+        const currentKey = keys[keyIndex % keys.length];
+        keyIndex++;
+
         let rawPrompt = req.body.vXRequest || req.body.prompt;
         let decryptedPrompt = decrypt(rawPrompt);
 
-        // طلب مباشر لجوجل بدون لف ولا دوران
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${hardcodedKey}`;
+        // الرابط الصحيح مع المفتاح المختار والموديل المستقر
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${currentKey}`;
         
         const response = await fetch(url, {
             method: "POST",
@@ -59,8 +68,7 @@ module.exports = async (req, res) => {
             const aiText = data.candidates[0].content.parts[0].text;
             res.status(200).json({ vXPayload: encrypt(aiText) });
         } else {
-            // إذا جوجل ردت بخطأ، اطبعه لنا عشان نشوفه في الفلاتر
-            const errorMsg = data.error ? data.error.message : "خطأ غير معروف من جوجل";
+            const errorMsg = data.error ? data.error.message : "جوجل لم ترد بنص";
             res.status(200).json({ vXPayload: encrypt(جوجل قالت: ${errorMsg}) });
         }
 
