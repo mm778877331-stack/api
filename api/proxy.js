@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
             res.status(200).json({ vXPayload: encrypt(aiText) });
         } else {
             const errorMsg = data.error ? data.error.message : "جوجل لم ترد بنص";
-            res.status(200).json({ vXPayload: encrypt(جوجل قالت: ${errorMsg}) });
+            res.status(200).json({ vXPayload: encrypt(`جوجل قالت: ${errorMsg})` });
         }
 
     } catch (error) {
