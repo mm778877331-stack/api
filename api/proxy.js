@@ -33,14 +33,14 @@ module.exports = async (req, res) => {
     if (req.method === "OPTIONS") return res.status(200).end();
 
     // 🚀 الحركة الانتحارية: وضع المفتاح مباشرة داخل الكود
-    const hardcodedKey = "AIzaSyCT8ikG7Yv_o_Ji4fSZniI9PYnU1RyMgx4"; 
+    const hardcodedKey = process.env.GEMINI_KEY_1; 
 
     try {
         let rawPrompt = req.body.vXRequest || req.body.prompt;
         let decryptedPrompt = decrypt(rawPrompt);
 
         // طلب مباشر لجوجل بدون لف ولا دوران
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${hardcodedKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
         
         const response = await fetch(url, {
             method: "POST",
