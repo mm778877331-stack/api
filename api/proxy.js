@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
             res.status(200).json({ vXPayload: encrypt(aiText) });
         } else {
             let errorInfo = data.error ? data.error.message : "Google No Response";
-            res.status(200).json({ vXPayload: encrypt("Error": + errorInfo });
+            res.status(200).json({ vXPayload: encrypt("Error" + errorInfo });
         }
 
     } catch (error) {
