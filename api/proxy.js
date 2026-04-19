@@ -52,7 +52,7 @@ module.exports = async (req, res) => {
         let decryptedPrompt = decrypt(rawPrompt);
 
         // الرابط الصحيح مع المفتاح المختار والموديل المستقر
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${currentKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`;
         
         const response = await fetch(url, {
             method: "POST",
@@ -68,11 +68,11 @@ module.exports = async (req, res) => {
             const aiText = data.candidates[0].content.parts[0].text;
             res.status(200).json({ vXPayload: encrypt(aiText) });
         } else {
-            const errorMsg = data.error ? data.error.message : "جوجل لم ترد بنص";
-            res.status(200).json({ vXPayload: encrypt(`جوجل قالت: ${errorMsg})` });
+            let errorInfo = data.error ? data.error.message : "Google No Response";
+            res.status(200).json({ vXPayload: encrypt("Error": + errorInfo });
         }
 
     } catch (error) {
-        res.status(200).json({ vXPayload: encrypt("فشل داخلي في البروكسي: " + error.message) });
+        res.status(200).json({ vXPayload: encrypt("Proxy Crash : " + error.message) });
     }
 };
