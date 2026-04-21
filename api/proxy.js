@@ -1,13 +1,10 @@
-// 1. الاستدعاءات الأساسية (كاملة وبدون نسيان)
 const crypto = require("crypto");
 const fetch = require("node-fetch");
 
-// 2. مفاتيح التشفير (ثابتة لضمان توافق فلاتر)
 const ENCRYPTION_KEY = Buffer.from("VX_SUPER_SECRET_KEY_32_CHARS_MAX"); 
 const IV_LENGTH = 16; 
 let globalIndex = 0;
 
-// --- دالات التشفير ---
 function decrypt(text) {
     try {
         if (!text || !text.includes(":")) return text;
@@ -29,7 +26,6 @@ function encrypt(text) {
     return iv.toString("hex") + ":" + encrypted;
 }
 
-// 3. المحرك الهجين
 module.exports = async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -37,18 +33,25 @@ module.exports = async (req, res) => {
     if (req.method === "OPTIONS") return res.status(200).end();
 
     try {
-        // جلب كل المفاتيح
         const googleKeys = Object.keys(process.env).filter(k => k.startsWith("GEMINI_")).map(k => process.env[k]);
         const groqKey = process.env.GROQ_KEY;
 
         let rawPrompt = req.body.vXRequest || req.body.prompt;
         let decryptedPrompt = decrypt(rawPrompt);
 
-        // --- محاولة مع جيش Google أولاً ---
+        // تاريخ اليوم بصيغة واضحة
+        const today = new Date().toLocaleDateString( 'ar-YE' , { year:  'numeric' , month:  'long' , day:  'numeric' , weekday:  'long'  });
+        
+        // الكلمات اللي تشغل رادار البحث
+        const needsSearch = /مباراة|برشلونة|تشكيلة|سعر|أخبار|اليوم|news|match|lineup|score|ترتيب/i.test(decryptedPrompt);
+
+        // رجعنا "الدلع" والقوة في الصياغة هنا
+        const strictPrompt = `تاريخ اليوم هو ${today}. أجب على الطلب التالي بناءً على هذا التاريخ وإذا احتجت معلومات حديثة (مثل نتائج مباريات أو تشكيلات) استخدم البحث فوراً: \n${decryptedPrompt}`;
+
+        // --- محاولة مع Google (نظام البحث) ---
         if (googleKeys.length > 0) {
             let attempts = 0;
-            // بنجرب مفتاحين من جوجل كحد أقصى قبل ما نحول لـ Groq عشان السرعة
-            while (attempts < Math.min(googleKeys.length, 2)) {
+            while (attempts < Math.min(googleKeys.length, 3)) {
                 const currentKey = googleKeys[globalIndex % googleKeys.length];
                 globalIndex++;
                 attempts++;
@@ -58,7 +61,8 @@ module.exports = async (req, res) => {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            contents: [{ role: "user", parts: [{ text: decryptedPrompt }] }]
+                            contents: [{ role: "user", parts: [{ text: strictPrompt }] }],
+                            tools: needsSearch ? [{ google_search_retrieval: {} }] : []
                         })
                     });
 
@@ -66,20 +70,25 @@ module.exports = async (req, res) => {
                     if (gResponse.ok && gData.candidates) {
                         return res.status(200).json({ vXPayload: encrypt(gData.candidates[0].content.parts[0].text) });
                     }
-                    // لو زحمة (429) كمل اللوب وجرب المفتاح اللي بعده
-                    if (gResponse.status !== 429) break;
+                    if (gResponse.status !== 429) break; 
                 } catch (e) { continue; }
             }
         }
 
-        // --- الخطة البديلة: التحويل الفوري لـ Groq (المنقذ) ---
+        // --- الخطة البديلة (Groq) ---
         if (groqKey) {
             const qResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
-                headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+                headers: { 
+                    "Authorization": `Bearer ${groqKey}`, 
+                    "Content-Type": "application/json" 
+                },
                 body: JSON.stringify({
                     model: "llama-3.3-70b-versatile",
-                    messages: [{ role: "user", content: decryptedPrompt }]
+                    messages: [
+                        { role: "system", content: `أنت مساعد ذكي في عام 2026. تاريخ اليوم: ${today}.` },
+                        { role: "user", content: decryptedPrompt }
+                    ]
                 })
             });
 
@@ -89,10 +98,9 @@ module.exports = async (req, res) => {
             }
         }
 
-        return res.status(200).json({ vXPayload: encrypt("⚠️ حالياً جميع المحركات مشغولة، ثوانٍ وجرب.") });
+        return res.status(200).json({ vXPayload: encrypt("⚠️ المحركات مشغولة، جرب مرة أخرى.") });
 
     } catch (err) {
-        // حماية من الـ 500 اللعينة
-        return res.status(200).json({ vXPayload: encrypt("🚨 حدث خطأ غير متوقع: " + err.message) });
+        return res.status(200).json({ vXPayload: encrypt("🚨 خطأ: " + err.message) });
     }
 };
