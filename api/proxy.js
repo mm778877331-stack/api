@@ -1,11 +1,13 @@
+// 1. الاستدعاءات الأساسية (كاملة وبدون نسيان)
 const crypto = require("crypto");
-const fetch = (...args) => import("node-fetch").then(({default: fetch}) => fetch(...args));
+const fetch = require("node-fetch");
 
+// 2. مفاتيح التشفير (ثابتة لضمان توافق فلاتر)
 const ENCRYPTION_KEY = Buffer.from("VX_SUPER_SECRET_KEY_32_CHARS_MAX"); 
 const IV_LENGTH = 16; 
-
 let globalIndex = 0;
 
+// --- دالات التشفير ---
 function decrypt(text) {
     try {
         if (!text || !text.includes(":")) return text;
@@ -27,77 +29,70 @@ function encrypt(text) {
     return iv.toString("hex") + ":" + encrypted;
 }
 
+// 3. المحرك الهجين
 module.exports = async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") return res.status(200).end();
 
-    // جيش مفاتيح جوجل
-    const googleKeys = Object.keys(process.env)
-        .filter(key => key.startsWith("GEMINI_"))
-        .map(key => process.env[key]);
+    try {
+        // جلب كل المفاتيح
+        const googleKeys = Object.keys(process.env).filter(k => k.startsWith("GEMINI_")).map(k => process.env[k]);
+        const groqKey = process.env.GROQ_KEY;
 
-    // مفتاح Groq (الاحتياطي الاستراتيجي)
-    const groqKey = process.env.GROQ_KEY;
+        let rawPrompt = req.body.vXRequest || req.body.prompt;
+        let decryptedPrompt = decrypt(rawPrompt);
 
-    let rawPrompt = req.body.vXRequest || req.body.prompt;
-    let decryptedPrompt = decrypt(rawPrompt);
-    
-    const needsSearch = /سعر|أخبار|مباراة|نتيجة|رابط|تحميل|بحث|news|search/i.test(decryptedPrompt);
+        // --- محاولة مع جيش Google أولاً ---
+        if (googleKeys.length > 0) {
+            let attempts = 0;
+            // بنجرب مفتاحين من جوجل كحد أقصى قبل ما نحول لـ Groq عشان السرعة
+            while (attempts < Math.min(googleKeys.length, 2)) {
+                const currentKey = googleKeys[globalIndex % googleKeys.length];
+                globalIndex++;
+                attempts++;
 
-    // --- المحاولة الأولى: جيش جوجل (لأن فيه ميزة البحث) ---
-    if (googleKeys.length > 0) {
-        let attempts = 0;
-        while (attempts < Math.min(googleKeys.length, 3)) { // جرب أول 3 مفاتيح متاحة
-            const currentKey = googleKeys[globalIndex % googleKeys.length];
-            globalIndex++;
-            attempts++;
+                try {
+                    const gResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ role: "user", parts: [{ text: decryptedPrompt }] }]
+                        })
+                    });
 
-            try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        contents: [{ role: "user", parts: [{ text: decryptedPrompt }] }],
-                        tools: needsSearch ? [{ google_search_retrieval: {} }] : []
-                    })
-                });
-
-                const data = await response.json();
-                if (response.ok && data.candidates) {
-                    return res.status(200).json({ vXPayload: encrypt(data.candidates[0].content.parts[0].text) });
-                }
-                if (response.status !== 429 && response.status !== 503) break; // لو الخطأ مش زحمة ولا كوتا، اخرج
-            } catch (e) { continue; }
+                    const gData = await gResponse.json();
+                    if (gResponse.ok && gData.candidates) {
+                        return res.status(200).json({ vXPayload: encrypt(gData.candidates[0].content.parts[0].text) });
+                    }
+                    // لو زحمة (429) كمل اللوب وجرب المفتاح اللي بعده
+                    if (gResponse.status !== 429) break;
+                } catch (e) { continue; }
+            }
         }
-    }
 
-    // --- الخطة البديلة: محرك Groq (المنقذ الصامت) ---
-    if (groqKey) {
-        try {
-            const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        // --- الخطة البديلة: التحويل الفوري لـ Groq (المنقذ) ---
+        if (groqKey) {
+            const qResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
-                headers: {
-                    "Authorization": Bearer ${groqKey},
-                    "Content-Type": "application/json"
-                },
+                headers: { "Authorization": Bearer ${groqKey}, "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile", // موديل قوي جداً ومجاني حالياً
+                    model: "llama-3.3-70b-versatile",
                     messages: [{ role: "user", content: decryptedPrompt }]
                 })
             });
 
-            const groqData = await groqResponse.json();
-            if (groqResponse.ok && groqData.choices) {
-                let aiText = groqData.choices[0].message.content;
-                return res.status(200).json({ vXPayload: encrypt(aiText + "\n\n(تم الرد عبر المحرك الاحتياطي ⚡)") });
+            const qData = await qResponse.json();
+            if (qResponse.ok && qData.choices) {
+                return res.status(200).json({ vXPayload: encrypt(qData.choices[0].message.content) });
             }
-        } catch (e) {
-            console.error("Groq Error:", e);
         }
-    }
 
-..., [21/04/2026 02:50 ص]
-res.status(200).json({ vXPayload: encrypt("❌ جميع المحركات مشغولة حالياً، جرب بعد ثوانٍ.") });
+        return res.status(200).json({ vXPayload: encrypt("⚠️ حالياً جميع المحركات مشغولة، ثوانٍ وجرب.") });
+
+    } catch (err) {
+        // حماية من الـ 500 اللعينة
+        return res.status(200).json({ vXPayload: encrypt("🚨 حدث خطأ غير متوقع: " + err.message) });
+    }
 };
