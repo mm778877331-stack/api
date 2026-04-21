@@ -62,7 +62,11 @@ module.exports = async (req, res) => {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             contents: [{ role: "user", parts: [{ text: strictPrompt }] }],
-                            tools: needsSearch ? [{ google_search_retrieval: {} }] : []
+                            tools: [
+                                {
+                                   google_search: {} 
+                                }
+                            ]
                         })
                     });
 
