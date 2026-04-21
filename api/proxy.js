@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contents: [{ role: "user", parts: [{ text: Today is ${today}. Search the web and answer: ${decryptedPrompt} }] }],
+                    contents: [{ role: "user", parts: [{ text: `Today is ${today}. Search the web and answer: ${decryptedPrompt}` }] }],
                     // الطريقة الأكثر استقراراً في Vercel حالياً
                     tools: [{ google_search_retrieval: {} }] 
                 })
