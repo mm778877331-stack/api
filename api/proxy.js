@@ -76,7 +76,7 @@ module.exports = async (req, res) => {
         if (groqKey) {
             const qResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
-                headers: { "Authorization": Bearer ${groqKey}, "Content-Type": "application/json" },
+                headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
                 body: JSON.stringify({
                     model: "llama-3.3-70b-versatile",
                     messages: [{ role: "user", content: decryptedPrompt }]
