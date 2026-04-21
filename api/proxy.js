@@ -38,71 +38,58 @@ module.exports = async (req, res) => {
 
         let rawPrompt = req.body.vXRequest || req.body.prompt;
         let decryptedPrompt = decrypt(rawPrompt);
+         const today = new Date().toLocaleDateString( 'ar-YE' , { year:  'numeric' , month:  'long' , day:  'numeric' , weekday:  'long'  });
 
-        // تاريخ اليوم بصيغة واضحة
-        const today = new Date().toLocaleDateString( 'ar-YE' , { year:  'numeric' , month:  'long' , day:  'numeric' , weekday:  'long'  });
-        
-        // الكلمات اللي تشغل رادار البحث
-        const needsSearch = /مباراة|برشلونة|تشكيلة|سعر|أخبار|اليوم|news|match|lineup|score|ترتيب/i.test(decryptedPrompt);
-
-        // رجعنا "الدلع" والقوة في الصياغة هنا
-        const strictPrompt = `تاريخ اليوم هو ${today}. أجب على الطلب التالي بناءً على هذا التاريخ وإذا احتجت معلومات حديثة (مثل نتائج مباريات أو تشكيلات) استخدم البحث فوراً: \n${decryptedPrompt}`;
-
-        // --- محاولة مع Google (نظام البحث) ---
+        // --- محاولة مع Google ---
         if (googleKeys.length > 0) {
-            let attempts = 0;
-            while (attempts < Math.min(googleKeys.length, 3)) {
-                const currentKey = googleKeys[globalIndex % googleKeys.length];
-                globalIndex++;
-                attempts++;
+            const currentKey = googleKeys[globalIndex % googleKeys.length];
+            globalIndex++;
 
-                try {
-                    const gResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ role: "user", parts: [{ text: strictPrompt }] }],
-                            tools: [
-                                {
-                                   google_search: {} 
-                                }
-                            ]
-                        })
-                    });
-
-                    const gData = await gResponse.json();
-                    if (gResponse.ok && gData.candidates) {
-                        return res.status(200).json({ vXPayload: encrypt(gData.candidates[0].content.parts[0].text) });
-                    }
-                    if (gResponse.status !== 429) break; 
-                } catch (e) { continue; }
-            }
-        }
-
-        // --- الخطة البديلة (Groq) ---
-        if (groqKey) {
-            const qResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            const gResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`, {
                 method: "POST",
-                headers: { 
-                    "Authorization": `Bearer ${groqKey}`, 
-                    "Content-Type": "application/json" 
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile",
-                    messages: [
-                        { role: "system", content: `أنت مساعد ذكي في عام 2026. تاريخ اليوم: ${today}.` },
-                        { role: "user", content: decryptedPrompt }
-                    ]
+                    contents: [{ role: "user", parts: [{ text: Today is ${today}. Search the web and answer: ${decryptedPrompt} }] }],
+                    // الطريقة الأكثر استقراراً في Vercel حالياً
+                    tools: [{ google_search_retrieval: {} }] 
                 })
             });
 
-            const qData = await qResponse.json();
-            if (qResponse.ok && qData.choices) {
-                return res.status(200).json({ vXPayload: encrypt(qData.choices[0].message.content) });
+            const gData = await gResponse.json();
+            
+            // لو الـ Search سبب مشكلة، بنحاول مرة ثانية "بدون بحث" عشان المستخدم ما يشوف رسالة "مشغول"
+            if (!gResponse.ok || !gData.candidates) {
+                const retryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ role: "user", parts: [{ text: `Today is ${today}. (Search failed, use memory): ${decryptedPrompt}` }] }]
+                    })
+                });
+                const retryData = await retryRes.json();
+                if (retryRes.ok && retryData.candidates) {
+                    return res.status(200).json({ vXPayload: encrypt(retryData.candidates[0].content.parts[0].text) });
+                }
+            } else {
+                return res.status(200).json({ vXPayload: encrypt(gData.candidates[0].content.parts[0].text) });
             }
         }
 
-        return res.status(200).json({ vXPayload: encrypt("⚠️ المحركات مشغولة، جرب مرة أخرى.") });
+        // --- البديل الصلب (Groq) ---
+        if (groqKey) {
+            const qResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                    model: "llama-3.3-70b-versatile",
+                    messages: [{ role: "user", content: decryptedPrompt }]
+                })
+            });
+            const qData = await qResponse.json();
+            if (qResponse.ok) return res.status(200).json({ vXPayload: encrypt(qData.choices[0].message.content) });
+        }
+
+        return res.status(200).json({ vXPayload: encrypt("⚠️ المحرك تحت الصيانة، حاول ثانية.") });
 
     } catch (err) {
         return res.status(200).json({ vXPayload: encrypt("🚨 خطأ: " + err.message) });
