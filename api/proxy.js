@@ -3,7 +3,7 @@ const fetch = require("node-fetch");
 
 const ENCRYPTION_KEY = Buffer.from("VX_SUPER_SECRET_KEY_32_CHARS_MAX"); 
 const IV_LENGTH = 16; 
-let globalIndex = 0;
+let globalIndex = 0; 
 
 function decrypt(text) {
     try {
@@ -35,63 +35,81 @@ module.exports = async (req, res) => {
     try {
         const googleKeys = Object.keys(process.env).filter(k => k.startsWith("GEMINI_")).map(k => process.env[k]);
         const groqKey = process.env.GROQ_KEY;
-
+        
         let rawPrompt = req.body.vXRequest || req.body.prompt;
         let decryptedPrompt = decrypt(rawPrompt);
          const today = new Date().toLocaleDateString( 'ar-YE' , { year:  'numeric' , month:  'long' , day:  'numeric' , weekday:  'long'  });
 
-        // --- محاولة مع Google ---
+        const isImageReq = /صمم|ارسم|صورة لـ|image for|draw|generate image/i.test(decryptedPrompt);
+
+        // --- محاولة مع Google أولاً (تدعم البحث والرسم) ---
         if (googleKeys.length > 0) {
             const currentKey = googleKeys[globalIndex % googleKeys.length];
             globalIndex++;
 
-            const gResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [{ role: "user", parts: [{ text: `Today is ${today}. Search the web and answer: ${decryptedPrompt}` }] }],
-                    // الطريقة الأكثر استقراراً في Vercel حالياً
-                    tools: [{ google_search_retrieval: {} }] 
-                })
-            });
+            let finalPrompt = isImageReq 
+                ? `Act as an expert Image Prompt Engineer. Create a highly detailed, cinematic, 8k professional drawing prompt in ENGLISH for: "${decryptedPrompt}". Respond ONLY with the description.`
+                : `Today is ${today}. Answer: ${decryptedPrompt}`;
 
-            const gData = await gResponse.json();
-            
-            // لو الـ Search سبب مشكلة، بنحاول مرة ثانية "بدون بحث" عشان المستخدم ما يشوف رسالة "مشغول"
-            if (!gResponse.ok || !gData.candidates) {
-                const retryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${currentKey}`, {
+            try {
+                const gResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${currentKey}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{ role: "user", parts: [{ text: `Today is ${today}. (Search failed, use memory): ${decryptedPrompt}` }] }]
+                        contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+                        tools: isImageReq ? [] : [{ google_search_retrieval: {} }]
                     })
                 });
-                const retryData = await retryRes.json();
-                if (retryRes.ok && retryData.candidates) {
-                    return res.status(200).json({ vXPayload: encrypt(retryData.candidates[0].content.parts[0].text) });
+
+                const gData = await gResponse.json();
+
+                if (gData.candidates && gData.candidates[0].content) {
+                    let aiText = gData.candidates[0].content.parts[0].text.trim();
+
+                    if (isImageReq) {
+                        const encodedPrompt = encodeURIComponent(aiText);
+                        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux`;
+                        return res.status(200).json({ vXPayload: encrypt(`VX_IMAGE_URL: ${imageUrl}`) });
+                    }
+                    return res.status(200).json({ vXPayload: encrypt(aiText) });
                 }
-            } else {
-                return res.status(200).json({ vXPayload: encrypt(gData.candidates[0].content.parts[0].text) });
+            } catch (gErr) {
+                console.error("Google failed, moving to Groq...");
             }
         }
 
-        // --- البديل الصلب (Groq) ---
+        // --- البديل الصلب (Groq) لو فشل جوجل أو لم يوجد مفاتيح ---
         if (groqKey) {
             const qResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+
                 method: "POST",
-                headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({
+                headers: { 
+                    "Authorization": `Bearer ${groqKey}`,
+                    "Content-Type": "application/json" 
+                },
+                body: JSON.stringify({
                     model: "llama-3.3-70b-versatile",
                     messages: [{ role: "user", content: decryptedPrompt }]
                 })
             });
+
             const qData = await qResponse.json();
-            if (qResponse.ok) return res.status(200).json({ vXPayload: encrypt(qData.choices[0].message.content) });
+            if (qData.choices && qData.choices[0].message) {
+                let qText = qData.choices[0].message.content;
+                
+                // حتى البديل الصلب نخليه يدعم الرسم لو طلب المستخدم
+                if (isImageReq) {
+                    const encodedPrompt = encodeURIComponent(qText);
+                    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux`;
+                    return res.status(200).json({ vXPayload: encrypt(`VX_IMAGE_URL: ${imageUrl}`) });
+                }
+                return res.status(200).json({ vXPayload: encrypt(qText) });
+            }
         }
 
-        return res.status(200).json({ vXPayload: encrypt("⚠️ المحرك تحت الصيانة، حاول ثانية.") });
+        return res.status(200).json({ vXPayload: encrypt("⚠️ المحركات تحت الصيانة، حاول لاحقاً.") });
 
     } catch (err) {
-        return res.status(200).json({ vXPayload: encrypt("🚨 خطأ: " + err.message) });
+        return res.status(200).json({ vXPayload: encrypt("🚨 خطأ تقني: " + err.message) });
     }
 };
