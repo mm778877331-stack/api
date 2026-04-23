@@ -56,8 +56,13 @@ module.exports = async (req, res) => {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
-                        tools: isImageReq ? [] : [{ google_search_retrieval: {} }]
+                        systemInstruction: {
+                            parts: [{ text: "أنت محرك VisionX. إذا طلب المستخدم صورة، ارجع وصفاً فنياً بالإنجليزية فقط. إذا سأل عن أخبار استخدم البحث." }]
+                        },
+                         contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+                         tools: [{
+                            google_search: {} 
+                        }]
                     })
                 });
 
