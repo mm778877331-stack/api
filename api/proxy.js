@@ -65,10 +65,17 @@ module.exports = async (req, res) => {
                            google_search_retrieval: {
                                dynamic_retrieval_config: {
                                    mode: "MODE_DYNAMIC",
-                                   dynamic_threshold: 0.3 // هذا السطر يجبره يبحث لو شك أن المعلومة قديمة
+                                   dynamic_threshold: 0.1 // هذا السطر يجبره يبحث لو شك أن المعلومة قديمة
                                }
                            }
-                       }]
+                       }],
+                            // انقل التعليمات لداخل الـ contents كـ "Role: System" إذا لم يقبلها الموديل في الأعلى
+                       generationConfig: {
+                           temperature: 0.1, // قلل الحرارة لكي يلتزم بالحقائق ولا يألف مدربين من رأسه
+                           topP: 0.95,
+                        }
+                      })
+                    
                     })
                 });
 
