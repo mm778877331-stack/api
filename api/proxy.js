@@ -56,13 +56,19 @@ module.exports = async (req, res) => {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        systemInstruction: {
-                            parts: [{ text: "أنت محرك VisionX. إذا طلب المستخدم صورة، ارجع وصفاً فنياً بالإنجليزية فقط. إذا سأل عن أخبار استخدم البحث." }]
-                        },
-                         contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
-                         tools: [{
-                            google_search: {} 
-                        }]
+                       contents: [{ 
+                           role: "user", 
+                           parts: [{ text: finalPrompt }] 
+                       }],
+                            // التغيير هنا: المسمى الصحيح للـ REST API هو google_search_retrieval
+                       tools: [{
+                           google_search_retrieval: {
+                               dynamic_retrieval_config: {
+                                   mode: "MODE_DYNAMIC",
+                                   dynamic_threshold: 0.3 // هذا السطر يجبره يبحث لو شك أن المعلومة قديمة
+                               }
+                           }
+                       }]
                     })
                 });
 
