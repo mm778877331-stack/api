@@ -62,12 +62,7 @@ module.exports = async (req, res) => {
                        }],
                          tools: [{
                            // هذا هو المسمى الصحيح والوحيد لتفعيل البحث في REST API
-                            google_search_retrieval: {
-                                dynamic_retrieval_config: {
-                                    mode: "MODE_DYNAMIC",
-                                    dynamic_threshold: 0.1
-                                }
-                            } 
+                            google_search: {} 
                         }
                       ]
                     
